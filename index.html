@@ -95,13 +95,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .fab:active{transform:scale(.93);}
 
 /* DETAIL VIEW */
-.detail-view{display:none;position:fixed;inset:0;z-index:600;background:var(–bg);flex-direction:column;overflow:hidden;}
+.detail-view{display:none;position:fixed;inset:0;z-index:600;background:#0A0E1A;flex-direction:column;overflow:hidden;isolation:isolate;}
 .detail-view.open{display:flex;animation:slideIn .3s ease;}
 @keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
 .detail-header{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(–border);background:var(–bg);flex-shrink:0;}
 .detail-back{background:var(–card);border:none;color:var(–text);padding:10px 16px;border-radius:50px;font-size:14px;font-family:‘DM Sans’,sans-serif;font-weight:600;cursor:pointer;}
 .detail-del{background:rgba(244,67,54,.15);border:1.5px solid rgba(244,67,54,.35);color:#ff6b6b;padding:10px 16px;border-radius:50px;font-size:14px;font-family:‘DM Sans’,sans-serif;font-weight:600;cursor:pointer;}
-.detail-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:28px 20px 60px;background:var(–bg);overscroll-behavior:contain;}
+.detail-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:28px 20px 60px;background:#0A0E1A;overscroll-behavior:contain;}
 body.detail-open{overflow:hidden;position:fixed;width:100%;height:100%;}
 .detail-cat-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:50px;font-size:13px;font-weight:700;margin-bottom:20px;}
 .detail-title{font-family:‘Playfair Display’,serif;font-size:28px;font-weight:900;line-height:1.25;margin-bottom:18px;}
@@ -575,22 +575,38 @@ window._restore=async(id)=>{
     await addDoc(collection(db,'notes'),{...noteData,date:noteData.date||new Date().toISOString()});
     await deleteDoc(doc(db,'trash',id));
     showToast('Note restaurée ↩');
-  }catch(e){showToast('Erreur de connexion');}
+    renderTrash();
+  }catch(e){
+    console.error('Restore error:',e);
+    showToast('Erreur : ' + e.message);
+  }
 };
 
 window._deletePerm=async(id)=>{
   try{
-    await deleteDoc(doc(db,'trash',id));
+    const ref = doc(db,'trash',id);
+    await deleteDoc(ref);
     showToast('Note supprimée définitivement');
-  }catch(e){showToast('Erreur de connexion');}
+    renderTrash();
+  }catch(e){
+    console.error('Delete error:',e);
+    showToast('Erreur : ' + e.message);
+  }
 };
 
 window.emptyTrash=async()=>{
   if(!trash.length){showToast('La corbeille est déjà vide ✨');return;}
   try{
-    await Promise.all(trash.map(n=>deleteDoc(doc(db,'trash',n.id))));
+    const ids = [...trash.map(n=>n.id)];
+    await Promise.all(ids.map(id=>deleteDoc(doc(db,'trash',id))));
+    trash=[];
+    renderTrash();
+    updateTrashBadge();
     showToast('Corbeille vidée ✨');
-  }catch(e){showToast('Erreur de connexion');}
+  }catch(e){
+    console.error('Empty trash error:',e);
+    showToast('Erreur : ' + e.message);
+  }
 };
 
 // MODAL
