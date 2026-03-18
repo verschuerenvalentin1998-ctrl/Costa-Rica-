@@ -339,7 +339,9 @@ function startListening(){
   setSyncing(true);
   // Notes
   onSnapshot(query(collection(db,'notes'),orderBy('date','desc')), snap => {
-    notes = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const incoming = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Filtrer les notes en cours de suppression
+    notes = incoming.filter(n => !_trashInProgress.has(n.id));
     try{ localStorage.setItem('cr_notes_cache', JSON.stringify(notes)); }catch(e){}
     setSyncing(false);
     renderAll();
@@ -347,7 +349,10 @@ function startListening(){
 
   // Corbeille
   onSnapshot(collection(db,'trash'), snap => {
-    trash = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const incoming = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Garder les suppressions locales en attendant Firebase
+    const localOnly = trash.filter(n => !incoming.find(x=>x.id===n.id) && !incoming.find(x=>x.id===n.id));
+    trash = incoming.filter(n => !_permDeleteInProgress.has(n.id));
     try{ localStorage.setItem('cr_trash_cache', JSON.stringify(trash)); }catch(e){}
     updateTrashBadge();
     if(document.getElementById('trashOverlay').classList.contains('open')) renderTrash();
@@ -500,6 +505,7 @@ function renderCard(n){
 
 // MOVE TO TRASH
 const _trashInProgress = new Set();
+const _permDeleteInProgress = new Set();
 window._moveToTrash=async(id)=>{
   if(_trashInProgress.has(id)) return; // anti double-clic
   _trashInProgress.add(id);
@@ -597,7 +603,8 @@ window._restore=async(id)=>{
 };
 
 window._deletePerm=async(id)=>{
-  // Suppression locale immédiate
+  if(_permDeleteInProgress.has(id)) return;
+  _permDeleteInProgress.add(id);
   trash = trash.filter(x=>x.id!==id);
   renderTrash();
   updateTrashBadge();
@@ -608,6 +615,7 @@ window._deletePerm=async(id)=>{
     console.error('Delete perm error:',e.code, e.message);
     showToast('Erreur Firebase : ' + e.code);
   }
+  _permDeleteInProgress.delete(id);
 };
 
 window.emptyTrash=async()=>{
