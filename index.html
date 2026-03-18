@@ -342,7 +342,7 @@ function startListening(){
     const incoming = snap.docs.map(d=>({id:d.id,...d.data()}));
     // Filtrer les notes en cours de suppression
     notes = incoming.filter(n => !_trashInProgress.has(n.id));
-    try{ localStorage.setItem('cr_notes_cache', JSON.stringify(notes)); }catch(e){}
+
     setSyncing(false);
     renderAll();
   }, err => { setSyncing(false); setError(true); });
@@ -353,7 +353,7 @@ function startListening(){
     // Garder les suppressions locales en attendant Firebase
     const localOnly = trash.filter(n => !incoming.find(x=>x.id===n.id) && !incoming.find(x=>x.id===n.id));
     trash = incoming.filter(n => !_permDeleteInProgress.has(n.id));
-    try{ localStorage.setItem('cr_trash_cache', JSON.stringify(trash)); }catch(e){}
+
     updateTrashBadge();
     if(document.getElementById('trashOverlay').classList.contains('open')) renderTrash();
   });
@@ -368,19 +368,17 @@ renderMembersList();
 // Cacher le loading après init
 // Afficher immédiatement depuis le cache
 const cachedUser = localStorage.getItem('cr_user');
-const cachedNotes = JSON.parse(localStorage.getItem('cr_notes_cache') || '[]');
-const cachedTrash = JSON.parse(localStorage.getItem('cr_trash_cache') || '[]');
 
 if(cachedUser){
   currentUser = cachedUser;
-  notes = cachedNotes;
-  trash = cachedTrash;
+  notes = [];
+  trash = [];
   document.getElementById('loadingScreen').style.display='none';
   document.getElementById('currentUser').textContent = currentUser;
   document.getElementById('app').style.display='flex';
   buildCatSelector();
   renderAll();
-  // Puis sync Firebase en arrière-plan
+  // Charger depuis Firebase uniquement
   startListening();
 } else {
   setTimeout(()=>{
