@@ -499,20 +499,34 @@ function renderCard(n){
 }
 
 // MOVE TO TRASH
+const _trashInProgress = new Set();
 window._moveToTrash=async(id)=>{
-  const n=notes.find(x=>x.id===id); if(!n) return;
+  if(_trashInProgress.has(id)) return; // anti double-clic
+  _trashInProgress.add(id);
+  const n=notes.find(x=>x.id===id); if(!n){ _trashInProgress.delete(id); return; }
+  // Retrait immédiat local
+  notes = notes.filter(x=>x.id!==id);
+  renderCards(); renderCats(); renderStats();
+  showToast('Note déplacée dans la corbeille 🗑');
   try{
     setSyncing(true);
     await addDoc(collection(db,'trash'),{...n,deletedAt:new Date().toISOString()});
     await deleteDoc(doc(db,'notes',id));
-    showToast('Note déplacée dans la corbeille 🗑');
-  }catch(e){ showToast('Erreur de connexion'); setSyncing(false); }
+    setSyncing(false);
+  }catch(e){
+    notes.push(n);
+    renderCards(); renderCats(); renderStats();
+    showToast('Erreur Firebase : ' + e.code);
+    setSyncing(false);
+  }
+  _trashInProgress.delete(id);
 };
 
 window.moveToTrashFromDetail=async()=>{
   if(!currentNoteId)return;
-  await window._moveToTrash(currentNoteId);
-  closeDetail();
+  const idToDelete = currentNoteId;
+  closeDetail(); // fermer immédiatement
+  await window._moveToTrash(idToDelete);
 };
 
 // DETAIL
@@ -583,29 +597,32 @@ window._restore=async(id)=>{
 };
 
 window._deletePerm=async(id)=>{
+  // Suppression locale immédiate
+  trash = trash.filter(x=>x.id!==id);
+  renderTrash();
+  updateTrashBadge();
+  showToast('Note supprimée définitivement');
   try{
-    const ref = doc(db,'trash',id);
-    await deleteDoc(ref);
-    showToast('Note supprimée définitivement');
-    renderTrash();
+    await deleteDoc(doc(db,'trash',id));
   }catch(e){
-    console.error('Delete error:',e);
-    showToast('Erreur : ' + e.message);
+    console.error('Delete perm error:',e.code, e.message);
+    showToast('Erreur Firebase : ' + e.code);
   }
 };
 
 window.emptyTrash=async()=>{
   if(!trash.length){showToast('La corbeille est déjà vide ✨');return;}
+  const ids = [...trash.map(n=>n.id)];
+  // Vider localement immédiatement
+  trash=[];
+  renderTrash();
+  updateTrashBadge();
+  showToast('Corbeille vidée ✨');
   try{
-    const ids = [...trash.map(n=>n.id)];
     await Promise.all(ids.map(id=>deleteDoc(doc(db,'trash',id))));
-    trash=[];
-    renderTrash();
-    updateTrashBadge();
-    showToast('Corbeille vidée ✨');
   }catch(e){
-    console.error('Empty trash error:',e);
-    showToast('Erreur : ' + e.message);
+    console.error('Empty trash error:',e.code);
+    showToast('Erreur Firebase : ' + e.code);
   }
 };
 
