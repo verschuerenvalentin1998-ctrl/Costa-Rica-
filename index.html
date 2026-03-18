@@ -45,9 +45,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .user-badge{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:50px;background:var(–card);border:1px solid var(–border);font-size:13px;font-weight:600;cursor:pointer;}
 .user-dot{width:8px;height:8px;border-radius:50%;background:var(–vert);}
 .header-sub{font-size:12px;color:var(–text2);}
-.trash-icon-btn{position:relative;width:40px;height:40px;border-radius:50%;background:var(–card);border:1px solid rgba(244,67,54,.3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-.trash-badge{position:absolute;top:-4px;right:-4px;background:var(–rouge);color:#fff;font-size:10px;font-weight:700;width:18px;height:18px;border-radius:50%;display:none;align-items:center;justify-content:center;}
-.trash-badge.show{display:flex;}
 
 .stats-bar{display:flex;gap:12px;padding:16px 20px;overflow-x:auto;scrollbar-width:none;}
 .stats-bar::-webkit-scrollbar{display:none;}
@@ -203,8 +200,6 @@ body.detail-open{overflow:hidden;position:fixed;width:100%;height:100%;}
     <div class="header-top">
       <div class="header-title">🌴 Costa Rica</div>
       <div class="header-right">
-        <div class="trash-icon-btn" onclick="openTrash()" title="Corbeille">
-          🗑<div class="trash-badge" id="trashBadge">0</div>
         </div>
         <div class="user-badge" onclick="changeName()">
           <div class="user-dot"></div>
@@ -229,24 +224,9 @@ body.detail-open{overflow:hidden;position:fixed;width:100%;height:100%;}
 <div class="detail-view" id="detailView">
   <div class="detail-header">
     <button class="detail-back" onclick="closeDetail()">← Retour</button>
-    <button class="detail-del" onclick="moveToTrashFromDetail()">🗑 Corbeille</button>
+    <button class="detail-del" onclick="moveToTrashFromDetail()">🗑 Supprimer</button>
   </div>
   <div class="detail-body" id="detailBody"></div>
-</div>
-
-<!-- CORBEILLE -->
-
-<div class="trash-overlay" id="trashOverlay" onclick="closeTrashOutside(event)">
-  <div class="trash-sheet">
-    <div class="trash-sheet-header">
-      <div class="trash-sheet-title">🗑 Corbeille</div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <button class="trash-empty-all" onclick="emptyTrash()">Tout supprimer</button>
-        <button class="trash-sheet-close" onclick="closeTrash()">✕</button>
-      </div>
-    </div>
-    <div class="trash-sheet-body" id="trashBody"></div>
-  </div>
 </div>
 
 <!-- MODAL AJOUT -->
@@ -296,7 +276,7 @@ body.detail-open{overflow:hidden;position:fixed;width:100%;height:100%;}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAvULX_6LF9YqYoh0RQocDRCpn7Ml_P7kg",
@@ -322,7 +302,7 @@ const CATS = [
   {id:'autres',       label:'Autres',       emoji:'📂', color:'#90A4AE'},
 ];
 
-let currentUser='', activeCategory='all', notes=[], trash=[], pendingFiles=[], members=[], currentNoteId=null;
+let currentUser='', activeCategory='all', notes=[], pendingFiles=[], members=[], currentNoteId=null;
 
 // Charger membres depuis localStorage (juste les prénoms)
 function loadMembers(){
@@ -347,16 +327,6 @@ function startListening(){
     renderAll();
   }, err => { setSyncing(false); setError(true); });
 
-  // Corbeille
-  onSnapshot(collection(db,'trash'), snap => {
-    const incoming = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // Garder les suppressions locales en attendant Firebase
-    const localOnly = trash.filter(n => !incoming.find(x=>x.id===n.id) && !incoming.find(x=>x.id===n.id));
-    trash = incoming.filter(n => !_permDeleteInProgress.has(n.id));
-
-    updateTrashBadge();
-    if(document.getElementById('trashOverlay').classList.contains('open')) renderTrash();
-  });
 }
 
 function setSyncing(v){ document.getElementById('syncDot').className='sync-dot'+(v?' syncing':''); }
@@ -425,11 +395,6 @@ function renderAll(){
     `Bonjour ${currentUser} 👋 — ${notes.length} note${notes.length!==1?'s':''} partagée${notes.length!==1?'s':''}`;
 }
 
-function updateTrashBadge(){
-  const b=document.getElementById('trashBadge');
-  b.textContent=trash.length;
-  trash.length>0?b.classList.add('show'):b.classList.remove('show');
-}
 
 // CATS
 function renderCats(){
@@ -503,21 +468,18 @@ function renderCard(n){
 
 // MOVE TO TRASH
 const _trashInProgress = new Set();
-const _permDeleteInProgress = new Set();
 window._moveToTrash=async(id)=>{
   if(_trashInProgress.has(id)) return;
   _trashInProgress.add(id);
   const n=notes.find(x=>x.id===id);
   if(!n){ _trashInProgress.delete(id); return; }
-  // Retrait immédiat local
+  // Suppression immédiate locale
   notes = notes.filter(x=>x.id!==id);
   renderCards(); renderCats(); renderStats();
-  showToast('Note déplacée dans la corbeille 🗑');
+  showToast('Note supprimée 🗑');
   try{
     setSyncing(true);
-    // D'abord supprimer de notes, PUIS ajouter dans trash
     await deleteDoc(doc(db,'notes',id));
-    await addDoc(collection(db,'trash'),{...n, deletedAt:new Date().toISOString()});
     setSyncing(false);
   }catch(e){
     notes.push(n);
@@ -531,7 +493,7 @@ window._moveToTrash=async(id)=>{
 window.moveToTrashFromDetail=async()=>{
   if(!currentNoteId)return;
   const idToDelete = currentNoteId;
-  closeDetail(); // fermer immédiatement
+  closeDetail();
   await window._moveToTrash(idToDelete);
 };
 
@@ -562,77 +524,9 @@ function closeDetail(){document.getElementById('detailView').classList.remove('o
 window.closeDetail=closeDetail;
 
 // CORBEILLE PANEL
-window.openTrash=()=>{renderTrash();document.getElementById('trashOverlay').classList.add('open');};
-window.closeTrash=()=>{document.getElementById('trashOverlay').classList.remove('open');};
-window.closeTrashOutside=e=>{if(e.target===document.getElementById('trashOverlay'))window.closeTrash();};
 
-function renderTrash(){
-  const el=document.getElementById('trashBody');
-  if(!trash.length){
-    el.innerHTML=`<div class="empty"><div class="empty-icon">✨</div><div class="empty-title">Corbeille vide</div><div class="empty-sub">Les notes supprimées apparaîtront ici.</div></div>`;
-    return;
-  }
-  el.innerHTML=trash.map(n=>{
-    const cat=CATS.find(c=>c.id===n.cat)||CATS[8];
-    const t=new Date(n.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
-    return `<div class="trash-item">
-      <div class="trash-item-cat" style="background:${cat.color}22;color:${cat.color}">${cat.emoji} ${cat.label}</div>
-      ${n.title?`<div class="trash-item-title">${n.title}</div>`:''}
-      ${n.content?`<div class="trash-item-content">${n.content}</div>`:''}
-      <div class="trash-item-meta">${n.author} · ${t}</div>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn-restore" onclick="window._restore('${n.id}')">↩ Restaurer</button>
-        <button class="btn-delete-perm" onclick="window._deletePerm('${n.id}')">✕ Supprimer</button>
-      </div>
-    </div>`;
-  }).join('');
-}
 
-window._restore=async(id)=>{
-  const n=trash.find(x=>x.id===id);if(!n)return;
-  try{
-    const {deletedAt,...noteData}=n;
-    await addDoc(collection(db,'notes'),{...noteData,date:noteData.date||new Date().toISOString()});
-    await deleteDoc(doc(db,'trash',id));
-    showToast('Note restaurée ↩');
-    renderTrash();
-  }catch(e){
-    console.error('Restore error:',e);
-    showToast('Erreur : ' + e.message);
-  }
-};
 
-window._deletePerm=async(id)=>{
-  if(_permDeleteInProgress.has(id)) return;
-  _permDeleteInProgress.add(id);
-  trash = trash.filter(x=>x.id!==id);
-  renderTrash();
-  updateTrashBadge();
-  showToast('Note supprimée définitivement');
-  try{
-    await deleteDoc(doc(db,'trash',id));
-  }catch(e){
-    console.error('Delete perm error:',e.code, e.message);
-    showToast('Erreur Firebase : ' + e.code);
-  }
-  _permDeleteInProgress.delete(id);
-};
-
-window.emptyTrash=async()=>{
-  if(!trash.length){showToast('La corbeille est déjà vide ✨');return;}
-  const ids = [...trash.map(n=>n.id)];
-  // Vider localement immédiatement
-  trash=[];
-  renderTrash();
-  updateTrashBadge();
-  showToast('Corbeille vidée ✨');
-  try{
-    await Promise.all(ids.map(id=>deleteDoc(doc(db,'trash',id))));
-  }catch(e){
-    console.error('Empty trash error:',e.code);
-    showToast('Erreur Firebase : ' + e.code);
-  }
-};
 
 // MODAL
 function buildCatSelector(){
