@@ -505,22 +505,24 @@ function renderCard(n){
 const _trashInProgress = new Set();
 const _permDeleteInProgress = new Set();
 window._moveToTrash=async(id)=>{
-  if(_trashInProgress.has(id)) return; // anti double-clic
+  if(_trashInProgress.has(id)) return;
   _trashInProgress.add(id);
-  const n=notes.find(x=>x.id===id); if(!n){ _trashInProgress.delete(id); return; }
+  const n=notes.find(x=>x.id===id);
+  if(!n){ _trashInProgress.delete(id); return; }
   // Retrait immédiat local
   notes = notes.filter(x=>x.id!==id);
   renderCards(); renderCats(); renderStats();
   showToast('Note déplacée dans la corbeille 🗑');
   try{
     setSyncing(true);
-    await addDoc(collection(db,'trash'),{...n,deletedAt:new Date().toISOString()});
+    // D'abord supprimer de notes, PUIS ajouter dans trash
     await deleteDoc(doc(db,'notes',id));
+    await addDoc(collection(db,'trash'),{...n, deletedAt:new Date().toISOString()});
     setSyncing(false);
   }catch(e){
     notes.push(n);
     renderCards(); renderCats(); renderStats();
-    showToast('Erreur Firebase : ' + e.code);
+    showToast('Erreur : ' + e.code);
     setSyncing(false);
   }
   _trashInProgress.delete(id);
